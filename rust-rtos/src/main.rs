@@ -10,33 +10,30 @@ use core::alloc::Layout;
 use cortex_m::asm;
 use cortex_m_rt::{entry, exception, ExceptionFrame};
 use freertos_rust::*;
-use stm32f3xx_hal::{gpio::*, pac, prelude::*, time::duration};
+use stm32f3xx_hal::{gpio::*, pac, prelude::*};
 
 #[global_allocator]
 static GLOBAL: FreeRtosAllocator = FreeRtosAllocator;
-// static mut S1: Option<FreeRtosSemaphoreHandle> = None;
-// static mut S2: Option<FreeRtosSemaphoreHandle> = None;
-static mut SEMAPHORE_HANDLE: Option<Semaphore> = None;
+static mut S1: Option<Semaphore> = None;
+static mut S2: Option<Semaphore> = None;
+static mut S3: Option<Semaphore> = None;
 
 type LedPin<const T: u8> = Pin<Gpioe, U<T>, Output<PushPull>>;
 
-// unsafe fn create_binary_semaphore() -> Result<FreeRtosSemaphoreHandle, FreeRtosError> {
-//     let s = freertos_rs_create_binary_semaphore();
-//     if s == 0 as *const _ {
-//         return Err(FreeRtosError::OutOfMemory);
-//     }
-//     Ok(s)
-// }
-
-fn generate_led_blinky<const T: u8>(mut led: LedPin<T>) -> impl FnMut(Task) -> () {
+fn generate_led_blinky<const T: u8>(
+    mut led: LedPin<T>,
+    mut s_before: Option<&'static mut Semaphore>,
+    mut s_after: Option<&'static mut Semaphore>,
+) -> impl FnMut(Task) -> () {
     move |_| loop {
         unsafe {
-            let s1 = SEMAPHORE_HANDLE.as_mut().unwrap();
             let _ = led.set_low();
+            let s1 = s_before.as_mut().unwrap();
             let _ = s1.take(Duration::infinite());
             let _ = led.set_high();
             freertos_rust::CurrentTask::delay(Duration::ms(1000));
-            s1.give();
+            let s2 = s_after.as_mut().unwrap();
+            s2.give();
             freertos_rust::CurrentTask::delay(Duration::ms(20));
         }
     }
@@ -48,37 +45,47 @@ fn main() -> ! {
     let p = pac::Peripherals::take().unwrap();
     let mut rcc = p.RCC.constrain();
     let mut gpioe = p.GPIOE.split(&mut rcc.ahb);
-    let mut led_9 = gpioe
+    let led_9 = gpioe
         .pe9
         .into_push_pull_output(&mut gpioe.moder, &mut gpioe.otyper);
-    let mut led_8 = gpioe
+    let led_8 = gpioe
         .pe8
         .into_push_pull_output(&mut gpioe.moder, &mut gpioe.otyper);
-    let mut led_10 = gpioe
+    let led_10 = gpioe
         .pe10
         .into_push_pull_output(&mut gpioe.moder, &mut gpioe.otyper);
 
     unsafe {
-        SEMAPHORE_HANDLE = Some(Semaphore::new_counting(1, 1).unwrap());
+        S1 = Some(Semaphore::new_counting(1, 1).unwrap());
+        S2 = Some(Semaphore::new_counting(1, 0).unwrap());
+        S3 = Some(Semaphore::new_counting(1, 0).unwrap());
     }
 
     Task::new()
         .name("blinky")
         .stack_size(128)
         .priority(TaskPriority(3))
-        .start(generate_led_blinky(led_9))
+        .start(generate_led_blinky(led_9, unsafe { S1.as_mut() }, unsafe {
+            S2.as_mut()
+        }))
         .unwrap();
     Task::new()
         .name("another_blinky")
         .stack_size(128)
-        .priority(TaskPriority(3))
-        .start(generate_led_blinky(led_8))
+        .priority(TaskPriority(2))
+        .start(generate_led_blinky(led_8, unsafe { S2.as_mut() }, unsafe {
+            S3.as_mut()
+        }))
         .unwrap();
     Task::new()
         .name("yet_another_blinky")
         .stack_size(128)
-        .priority(TaskPriority(3))
-        .start(generate_led_blinky(led_10))
+        .priority(TaskPriority(1))
+        .start(generate_led_blinky(
+            led_10,
+            unsafe { S3.as_mut() },
+            unsafe { S1.as_mut() },
+        ))
         .unwrap();
     FreeRtosUtils::start_scheduler();
 }
