@@ -1,65 +1,34 @@
-# `stm32-template`
+# Rust Blinky
 
-> A template for building applications for STM32 microcontrollers
+Name: Muhammad Sulthan Mazaya
 
-## Dependencies
+Andrew ID: mmazaya
 
-To build embedded programs using this template you'll need:
+To run the program, make sure the current working directory is the root directory of this project:
 
-- The `cargo generate` subcommand. [Installation
-  instructions](https://github.com/cargo-generate/cargo-generate#installation).
-``` console
-$ cargo install cargo-generate
+```
+$ tree -L 1
+.
+├── Cargo.lock
+├── Cargo.toml
+├── Embed.toml
+├── gdb_commands.gdb
+├── memory.x
+├── README.md
+├── src
+└── target
 ```
 
-- Flash and run/debug tools:
-``` console
-$ cargo install probe-rs --features cli
+To compile and run it, use the following command.
+
+```
+$ cargo run --release
 ```
 
-- `rust-std` components (pre-compiled `core` crate) for the ARM Cortex-M
-  targets. Run:
-  
-``` console
-$ rustup target add thumbv6m-none-eabi thumbv7m-none-eabi thumbv7em-none-eabi thumbv7em-none-eabihf
+It should automatically downloaded all the necessary crates. When finished, `arm-none-eabi-gdb` will be executed with commands on `gdb_commands.gdb` which automatically uses localhost:3333 as the remote target and load the binary release there. If necessary, it is possible to change the gdb command after compiling the source code. To do so, head to `.cargo/config.toml` and change the second line of the file with the new desired command.
+
 ```
-
-## Instantiate the template.
-
-1. Run and enter project name
-``` console
-$ cargo generate --git https://github.com/burrbull/stm32-template/
- Project Name: app
+[target.'cfg(all(target_arch = "arm", target_os = "none"))']
+runner = "arm-none-eabi-gdb -x gdb_commands.gdb -se" # this will execute `arm-none-eabi-gdb -x gdb_commands.gdb -se [binary]`
+                                                     # you can this to match your gdb path 
 ```
-
-2. Specify **chip product name** and answer on several other guide questions.
-
-3. Your program is ready to compile:
-``` console
-$ cargo build --release
-```
-
-## Flash and run/debug
-
-You can flash your firmware using one of those tools:
-
-- `cargo flash --release` — just flash
-- `cargo run --release` — flash and run using `probe-rs run` runner or `probe-run` runner (deprecated) which you can set in `.cargo/config.toml`
-- `cargo embed --release` — multifunctional tool for flash and debug
-
-You also can debug your firmware on device from VS Code with [probe-rs](https://probe.rs/docs/tools/vscode/) extention or with `probe-rs gdb` command.
-You will need SVD specification for your chip for this. You can load patched SVD files [here](https://stm32-rs.github.io/stm32-rs/).
-
-## Contribution
-
-Unless you explicitly state otherwise, any contribution intentionally submitted
-for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
-dual licensed as above, without any additional terms or conditions.
-
-## Code of Conduct
-
-Contribution to this crate is organized under the terms of the [Rust Code of
-Conduct][CoC], the maintainer of this crate, promises
-to intervene to uphold that code of conduct.
-
-[CoC]: https://www.rust-lang.org/policies/code-of-conduct

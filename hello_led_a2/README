@@ -1,0 +1,17 @@
+Hello LED Application - Assignment 2
+
+
+In this project the following files are reliable and do not require modification
+for the standard Ubuntu setup.
+1. stlink-v2-1.cfg - required by openocd
+2. stm32f3x.cfg - required by openocd
+3. stm32f303xx.h - board support package
+
+
+The following files require modification to complete the assignment.  All required
+modifications are marked with TODO's.
+
+1. Makefile (instructions in the file, minor modification for local toolchain setup)
+2. init.c - must fill in some startup code
+3. main.c - need to locate GPIO registers to toggle for operation
+4. linker_script.ld - required to fill in addresses for MEMORY and no more.
