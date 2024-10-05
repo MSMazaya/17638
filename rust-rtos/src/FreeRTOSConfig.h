@@ -97,7 +97,7 @@ extern void vAssertCalled(unsigned long ulLine, const char *const pcFileName);
 #define configUSE_TICK_HOOK 0
 #define configCPU_CLOCK_HZ (4200000UL) // also systick runs at this frequency
 #define configTICK_RATE_HZ                                                     \
-  ((TickType_t)1) // 1000=1ms per tick, 100=10ms per tick
+  ((TickType_t)1000) // 1000=1ms per tick, 100=10ms per tick
 #define configMAX_PRIORITIES (5)
 #define configMINIMAL_STACK_SIZE ((unsigned short)80)
 #define configTOTAL_HEAP_SIZE ((size_t)(15 * 1024)) // was 15
@@ -115,7 +115,7 @@ extern void vAssertCalled(unsigned long ulLine, const char *const pcFileName);
   0 // max tickless period with 16MHz sysclock = ~1sek
 #define configEXPECTED_IDLE_TIME_BEFORE_SLEEP                                  \
   3 // min as ticks before geting in tickless sleep
-#define configUSE_COUNTING_SEMAPHORES  1
+#define configUSE_COUNTING_SEMAPHORES 1
 
 // http://www.freertos.org/Configuring-a-real-time-RTOS-application-to-use-software-timers.html
 #define configUSE_TIMERS 1
@@ -186,13 +186,14 @@ See http://www.FreeRTOS.org/RTOS-Cortex-M3-M4.html. */
 /* Run time stats related macros. */
 // #define configGENERATE_RUN_TIME_STATS	0
 #define configUSE_STATS_FORMATTING_FUNCTIONS (1)
+#define configUSE_TASK_NOTIFICATIONS 1
 // #define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS()
 // //vConfigureTimerForRunTimeStats() #define
 // portALT_GET_RUN_TIME_COUNTER_VALUE( ulCountValue )
 //	{
 //		TIM_Cmd( TIM6, DISABLE );
 //		ulCountValue = ( ( ulTIM6_OverflowCount << 16UL ) | ( unsigned
-//long ) TIM6->CNT ); 		TIM_Cmd( TIM6, ENABLE );
+// long ) TIM6->CNT ); 		TIM_Cmd( TIM6, ENABLE );
 //	}
 
 #endif /* FREERTOS_CONFIG_H */

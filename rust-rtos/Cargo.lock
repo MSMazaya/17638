@@ -223,7 +223,7 @@ dependencies = [
 [[package]]
 name = "freertos-rust"
 version = "0.1.2"
-source = "git+https://github.com/lobaro/FreeRTOS-rust#59b0a368b32e38b02044401f19f26417512de15f"
+source = "git+https://github.com/msmazaya/FreeRTOS-rust#3ec16e39fe908b40adb1e9920a8fe284ceebfa22"
 
 [[package]]
 name = "ident_case"

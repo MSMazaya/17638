@@ -10,7 +10,7 @@ cortex-m-rt = "0.7"
 panic-halt = "0.2.0"
 
 [dependencies.freertos-rust]
-git = "https://github.com/lobaro/FreeRTOS-rust"
+git = "https://github.com/msmazaya/FreeRTOS-rust"
 features = ["sync", "time", "interrupt", "allocator"]
 
 [dependencies.stm32f3xx-hal]
