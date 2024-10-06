@@ -7,22 +7,16 @@ use panic_halt as _;
 
 extern crate alloc;
 use alloc::sync::Arc;
-use core::{
-    alloc::Layout,
-    borrow::{Borrow, BorrowMut},
-    cell::RefCell,
-};
+use core::{alloc::Layout, cell::RefCell};
 use cortex_m::{asm, interrupt::Mutex as CortexMMutex};
 use cortex_m_rt::{entry, exception, ExceptionFrame};
-use freertos_rust::{FreeRtosHooks, *};
+use cortex_m_semihosting::{hprint, hprintln};
+use freertos_rust::*;
 use stm32f3xx_hal::{
     gpio::*,
     interrupt,
-    pac::{self, gpioa, Peripherals},
+    pac::{self},
     prelude::*,
-    syscfg,
-    timer::{Event, Timer},
-    Switch,
 };
 
 #[global_allocator]
@@ -188,6 +182,10 @@ what is weird is that: this kind of ensures you can reset the queue so that
     2. Accelerometer
 */
 
+/* NOTE: accelerometer: ST MEMS LSM303DLHC or LSM303AGR (page 26 pdf of discovery board)
+
+*/
+
 #[allow(clippy::empty_loop)]
 #[entry]
 fn main() -> ! {
@@ -197,6 +195,7 @@ fn main() -> ! {
     let mut syscfg = p.SYSCFG.constrain(&mut rcc.apb2);
     let mut gpioe = p.GPIOE.split(&mut rcc.ahb);
     let mut gpioa = p.GPIOA.split(&mut rcc.ahb);
+    let mut gpiob = p.GPIOB.split(&mut rcc.ahb);
     let mut leds = Leds {
         current_direction: LedDirection::N,
         northwest: gpioe
@@ -227,6 +226,38 @@ fn main() -> ! {
     let mut user_btn = gpioa
         .pa0
         .into_pull_down_input(&mut gpioa.moder, &mut gpioa.pupdr);
+
+    let mut flash = p.FLASH.constrain();
+    let clocks = rcc.cfgr.freeze(&mut flash.acr);
+    let mut scl =
+        gpiob
+            .pb6
+            .into_af_open_drain(&mut gpiob.moder, &mut gpiob.otyper, &mut gpiob.afrl);
+    let mut sda =
+        gpiob
+            .pb7
+            .into_af_open_drain(&mut gpiob.moder, &mut gpiob.otyper, &mut gpiob.afrl);
+    scl.internal_pull_up(&mut gpiob.pupdr, true);
+    sda.internal_pull_up(&mut gpiob.pupdr, true);
+    let i2c = stm32f3xx_hal::i2c::I2c::new(
+        p.I2C1,
+        (scl, sda),
+        100.kHz().try_into().unwrap(),
+        clocks,
+        &mut rcc.apb1,
+    );
+    let mut accelerometer = lsm303dlhc::Lsm303dlhc::new(i2c).unwrap();
+    let _ = accelerometer.accel_odr(lsm303dlhc::AccelOdr::Hz100);
+    let _ = accelerometer.set_accel_sensitivity(lsm303dlhc::Sensitivity::G12);
+    let mut prev_x = 0;
+    let mut prev_y = 0;
+    let mut prev_z = 0;
+    if let Ok(axis) = accelerometer.accel() {
+        prev_x = axis.x;
+        prev_y = axis.y;
+        prev_z = axis.z;
+    }
+
     let state = Arc::new(Mutex::new(AppState::new()).unwrap());
     let state_resetter_semaphore = Arc::new(Semaphore::new_binary().unwrap());
 
@@ -244,9 +275,38 @@ fn main() -> ! {
     });
 
     Task::new()
+        .name("accelerometer")
+        .stack_size(128)
+        .priority(TaskPriority(2))
+        .start({
+            let s_arc = Arc::clone(&state);
+            move |_| loop {
+                if let Ok(axis) = accelerometer.accel() {
+                    let difference =
+                        (axis.x - prev_x).abs() + (axis.y - prev_y).abs() + (axis.z - prev_z).abs();
+                    if difference > 1000 {
+                        if let Ok(mut s) = s_arc.lock(Duration::infinite()) {
+                            match *s {
+                                AppState::PreAlarm(_) => {
+                                    s.reset();
+                                }
+                                _ => {}
+                            };
+                        }
+                    }
+                    prev_x = axis.x;
+                    prev_y = axis.y;
+                    prev_z = axis.z;
+                }
+                CurrentTask::delay(Duration::ms(1000));
+            }
+        })
+        .unwrap();
+
+    Task::new()
         .name("state_resetter")
         .stack_size(128)
-        .priority(TaskPriority(5))
+        .priority(TaskPriority(2))
         .start({
             let s_arc = Arc::clone(&state);
             let s_semaphore_arc = Arc::clone(&state_resetter_semaphore);
@@ -266,7 +326,7 @@ fn main() -> ! {
     Task::new()
         .name("blinky")
         .stack_size(128)
-        .priority(TaskPriority(3))
+        .priority(TaskPriority(1))
         .start({
             let s_arc = Arc::clone(&state);
             move |_| loop {
