@@ -11,35 +11,28 @@ mod ecf;
 mod peripherals;
 mod tasks;
 use alloc::sync::Arc;
-use app_state::AppState;
+use app_state::{AppResetMessage, AppState, MAX_QUEUE_SIZE};
 use cortex_m_rt::entry;
 use freertos_rust::*;
-use tasks::{accelerometer_task, output_task, state_resetter_task};
 
 #[allow(clippy::empty_loop)]
 #[entry]
 fn main() -> ! {
     let (leds, user_btn, accelerometer) = peripherals::setup();
     let state = Arc::new(Mutex::new(AppState::new()).unwrap());
+    let state_queue = Arc::new(Queue::<AppResetMessage>::new(MAX_QUEUE_SIZE).unwrap());
     let task_resetter_semaphore = Arc::new(Semaphore::new_binary().unwrap());
 
     ecf::setup_interrupt(user_btn.interrupt());
-    ecf::setup_interrupt_resource(user_btn, Arc::clone(&task_resetter_semaphore));
+    ecf::setup_interrupt_resource(user_btn, Arc::clone(&state_queue));
 
     Task::new()
         .name("accelerometer")
         .stack_size(128)
         .priority(TaskPriority(2))
-        .start(accelerometer_task(Arc::clone(&state), accelerometer))
-        .unwrap();
-
-    Task::new()
-        .name("state_resetter")
-        .stack_size(128)
-        .priority(TaskPriority(2))
-        .start(state_resetter_task(
-            Arc::clone(&state),
-            Arc::clone(&task_resetter_semaphore),
+        .start(tasks::accelerometer_task(
+            Arc::clone(&state_queue),
+            accelerometer,
         ))
         .unwrap();
 
@@ -47,7 +40,11 @@ fn main() -> ! {
         .name("output")
         .stack_size(128)
         .priority(TaskPriority(1))
-        .start(output_task(Arc::clone(&state), leds))
+        .start(tasks::output_task(
+            Arc::clone(&state_queue),
+            Arc::clone(&state),
+            leds,
+        ))
         .unwrap();
 
     FreeRtosUtils::start_scheduler()

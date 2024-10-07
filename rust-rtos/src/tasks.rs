@@ -1,16 +1,18 @@
 use alloc::sync::Arc;
-use freertos_rust::{CurrentTask, Duration, Mutex, Semaphore, Task};
+use freertos_rust::{CurrentTask, Duration, Mutex, Queue, Semaphore, Task};
 use stm32f3xx_hal::prelude::_embedded_hal_digital_OutputPin;
 
 use crate::{
-    app_state::AppState,
+    app_state::{
+        AppResetMessage, AppState, ACTIVE_COUNTER_INITIAL_VALUE, PRE_ALARM_COUNTER_INITIAL_VALUE,
+    },
     peripherals::{Accelerometer, Leds},
 };
 
 const DIFFERENCE_TOLERANCE: i16 = 1000;
 
 pub fn accelerometer_task(
-    s_arc: Arc<Mutex<AppState>>,
+    state_queue: Arc<Queue<AppResetMessage>>,
     mut accelerometer: Accelerometer,
 ) -> impl FnOnce(Task) + Send + 'static {
     let mut prev_x = 0;
@@ -26,14 +28,7 @@ pub fn accelerometer_task(
             let difference =
                 (axis.x - prev_x).abs() + (axis.y - prev_y).abs() + (axis.z - prev_z).abs();
             if difference > DIFFERENCE_TOLERANCE {
-                if let Ok(mut s) = s_arc.lock(Duration::infinite()) {
-                    match *s {
-                        AppState::PreAlarm(_) => {
-                            s.reset();
-                        }
-                        _ => {}
-                    };
-                }
+                let _ = state_queue.send(AppResetMessage::FromAccelerometer, Duration::infinite());
             }
             prev_x = axis.x;
             prev_y = axis.y;
@@ -43,28 +38,27 @@ pub fn accelerometer_task(
     }
 }
 
-pub fn state_resetter_task(
-    s_arc: Arc<Mutex<AppState>>,
-    resetter_semaphore: Arc<Semaphore>,
-) -> impl FnOnce(Task) + Send + 'static {
-    move |_| loop {
-        let _ = resetter_semaphore.take(Duration::infinite());
-
-        if let Ok(mut s) = s_arc.lock(Duration::infinite()) {
-            match *s {
-                AppState::Alarm => s.reset(),
-                _ => {}
-            }
-        }
-    }
-}
-
 pub fn output_task(
+    state_queue: Arc<Queue<AppResetMessage>>,
     s_arc: Arc<Mutex<AppState>>,
     mut leds: Leds,
 ) -> impl FnOnce(Task) + Send + 'static {
     move |_| loop {
         if let Ok(mut s) = s_arc.lock(Duration::infinite()) {
+            if let Ok(transition) = state_queue.receive(Duration::zero()) {
+                match transition {
+                    AppResetMessage::FromButton => match *s {
+                        AppState::Alarm => *s = AppState::Active(ACTIVE_COUNTER_INITIAL_VALUE),
+                        _ => {}
+                    },
+                    AppResetMessage::FromAccelerometer => match *s {
+                        AppState::PreAlarm(_) => {
+                            *s = AppState::Active(ACTIVE_COUNTER_INITIAL_VALUE)
+                        }
+                        _ => {}
+                    },
+                }
+            }
             match *s {
                 AppState::Active(counter) => {
                     if counter != 0 {

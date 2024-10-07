@@ -1,6 +1,10 @@
+pub const MAX_QUEUE_SIZE: usize = 5;
+pub const PRE_ALARM_COUNTER_INITIAL_VALUE: usize = 16;
+pub const ACTIVE_COUNTER_INITIAL_VALUE: usize = 5;
+
 pub enum AppState {
-    Active(u32),
-    PreAlarm(u32),
+    Active(usize),
+    PreAlarm(usize),
     Alarm,
 }
 
@@ -13,9 +17,9 @@ impl AppState {
     }
     pub fn transition(&mut self) {
         *self = match self {
-            AppState::Active(_) => AppState::PreAlarm(16),
+            AppState::Active(_) => AppState::PreAlarm(PRE_ALARM_COUNTER_INITIAL_VALUE),
             AppState::PreAlarm(_) => AppState::Alarm,
-            AppState::Alarm => AppState::Active(5),
+            AppState::Alarm => AppState::Active(ACTIVE_COUNTER_INITIAL_VALUE),
         };
     }
     pub fn decrement_counter(&mut self) {
@@ -25,4 +29,10 @@ impl AppState {
             AppState::Alarm => AppState::Alarm,
         };
     }
+}
+
+#[derive(Clone, Copy)]
+pub enum AppResetMessage {
+    FromButton,
+    FromAccelerometer,
 }

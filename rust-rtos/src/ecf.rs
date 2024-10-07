@@ -8,11 +8,13 @@ use cortex_m_rt::{exception, ExceptionFrame};
 use freertos_rust::*;
 use stm32f3xx_hal::{gpio::*, interrupt};
 
+use crate::app_state::AppResetMessage;
+
 #[global_allocator]
 static GLOBAL: FreeRtosAllocator = FreeRtosAllocator;
 static G_BTN: CortexMMutex<RefCell<Option<Pin<Gpioa, U<0>, Input>>>> =
     CortexMMutex::new(RefCell::new(None));
-static G_RESETTER_SEMAPHORE: CortexMMutex<RefCell<Option<Arc<Semaphore>>>> =
+static G_STATE_QUEUE: CortexMMutex<RefCell<Option<Arc<Queue<AppResetMessage>>>>> =
     CortexMMutex::new(RefCell::new(None));
 
 pub fn setup_interrupt(interrupt_number: impl InterruptNumber) {
@@ -23,11 +25,11 @@ pub fn setup_interrupt(interrupt_number: impl InterruptNumber) {
 
 pub fn setup_interrupt_resource(
     user_btn: Pin<Gpioa, U<0>, Input>,
-    task_resetter_semaphore_arc: Arc<Semaphore>,
+    task_resetter_semaphore_arc: Arc<Queue<AppResetMessage>>,
 ) {
     cortex_m::interrupt::free(|cs| {
         *G_BTN.borrow(cs).borrow_mut() = Some(user_btn);
-        *G_RESETTER_SEMAPHORE.borrow(cs).borrow_mut() = Some(task_resetter_semaphore_arc);
+        *G_STATE_QUEUE.borrow(cs).borrow_mut() = Some(task_resetter_semaphore_arc);
     });
 }
 
@@ -35,8 +37,9 @@ pub fn setup_interrupt_resource(
 #[allow(non_snake_case)]
 fn EXTI0() {
     cortex_m::interrupt::free(|cs| {
-        if let Some(ref mut state_semaphore) = *G_RESETTER_SEMAPHORE.borrow(cs).borrow_mut() {
-            state_semaphore.give_from_isr(&mut InterruptContext::new());
+        if let Some(ref mut state_semaphore) = *G_STATE_QUEUE.borrow(cs).borrow_mut() {
+            let _ = state_semaphore
+                .send_from_isr(&mut InterruptContext::new(), AppResetMessage::FromButton);
         }
         if let Some(ref mut btn) = *G_BTN.borrow(cs).borrow_mut() {
             btn.clear_interrupt();
